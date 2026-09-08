@@ -13,8 +13,8 @@ import { ReentrancyGuard } from "../lib/openzeppelin-contracts/contracts/utils/R
  */
 contract NFTMarketplace is Ownable, ReentrancyGuard {
 
-    uint256 marketplaceFee;
-    uint256 accumulatedFees;
+    uint256 public marketplaceFee;
+    uint256 public accumulatedFees;
 
     /** @notice Stores the details of an NFT listed for sale. */
     struct Listing {
@@ -25,7 +25,7 @@ contract NFTMarketplace is Ownable, ReentrancyGuard {
     }
 
     /** @dev The NFT contract address and token ID uniquely identify a listing. */
-    mapping(address => mapping(uint256 => Listing)) listings;
+    mapping(address => mapping(uint256 => Listing)) public listings;
 
     /** @notice Emitted when an NFT is listed for sale. */
     event ListNFT(address indexed nftAddress_, uint256 indexed tokenId_, uint256 price_, address indexed seller_);
@@ -112,7 +112,7 @@ contract NFTMarketplace is Ownable, ReentrancyGuard {
      * @param tokenId_ The ID of the listed NFT.
      */
     function cancelListing(address nftAddress_, uint256 tokenId_) external {
-        require(listings[nftAddress_][tokenId_].seller == msg.sender, "You can not cancel the listing of a NFT that is not listed.");
+        require(listings[nftAddress_][tokenId_].seller == msg.sender, "You can not cancel the listing of an item that's not yours or is not listed.");
 
         delete listings[nftAddress_][tokenId_];
         emit CancelledListing(nftAddress_, tokenId_);
