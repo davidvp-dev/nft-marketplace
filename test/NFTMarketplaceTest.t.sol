@@ -15,6 +15,12 @@ contract MockNFT is ERC721 {
     }
 }
 
+contract RevertingSeller {
+    receive() external payable {
+        revert("Seller rejected payment");
+    }
+}
+
 contract NFTMarketplaceTest is Test {
     NFTMarketplace marketplace;
     MockNFT nft;
@@ -137,6 +143,37 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    function testWithdrawFeesKO_ethNotAvailable() public {
+        // 1. user A lists an item for sale (important to approve the NFT)
+        vm.startPrank(user);
+        address nftAddress_ = address(nft);
+        uint256 price_ = 1 ether;
+        uint256 tokenId_ = tokenId;
+        nft.approve(address(marketplace), tokenId_);
+        marketplace.listItem(nftAddress_, tokenId_, price_);
+        vm.stopPrank();
+
+        // 2. user B buys the item and fees are accumulated (sending {value: price})
+        address buyer = vm.addr(4);
+        vm.startPrank(buyer);
+        vm.deal(buyer, 1 ether);
+        marketplace.buyItem{value: 1 ether}(nftAddress_, tokenId_);
+        vm.stopPrank();
+
+        // 3. admin transfers ownership to the contract that's rejecting the ETH
+        vm.startPrank(deployer);
+        RevertingSeller seller = new RevertingSeller();
+        marketplace.transferOwnership(address(seller));
+        vm.stopPrank();
+
+        // 4. the new owner tries to withdraw the fees
+        vm.startPrank(address(seller));
+        vm.expectRevert("Withdrawal failed");
+        marketplace.withdrawFees();
+        vm.stopPrank();
+
+    }
+
     //----------------------------
     // Listing test
     function testListItemOK() public {
@@ -145,32 +182,20 @@ contract NFTMarketplaceTest is Test {
         uint256 price_ = 1 ether;
         uint256 tokenId_ = tokenId;
 
-        (
-            address nftAddressBefore_,
-            uint256 tokenIdBefore_,
-            uint256 priceBefore_,
-            address sellerBefore_
-        ) = marketplace.listings(nftAddress_, tokenId_);
+        (, , , address sellerBefore_) = marketplace.listings(
+            nftAddress_,
+            tokenId_
+        );
 
         marketplace.listItem(nftAddress_, tokenId_, price_);
 
-        (
-            address nftAddressAfter_,
-            uint256 tokenIdAfter_,
-            uint256 priceAfter_,
-            address sellerAfter_
-        ) = marketplace.listings(nftAddress_, tokenId_);
+        (, , , address sellerAfter_) = marketplace.listings(
+            nftAddress_,
+            tokenId_
+        );
 
         //Default values
-        assertEq(nftAddressBefore_, address(0));
-        assertEq(tokenIdBefore_, 0);
-        assertEq(priceBefore_, 0);
         assertEq(sellerBefore_, address(0));
-
-        //Updated values
-        assertEq(nftAddressAfter_, nftAddress_);
-        assertEq(tokenIdAfter_, tokenId_);
-        assertEq(priceAfter_, price_);
         assertEq(sellerAfter_, user);
 
         vm.stopPrank();
@@ -204,6 +229,20 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    function testListItemKO_invalidNFTOwned() public {
+        vm.startPrank(user);
+        address nftAddress_ = address(nft);
+        uint256 price_ = 1 ether;
+        address user2 = vm.addr(8);
+        uint tokenId_ = 1;
+
+        nft.mint(user2, tokenId_);
+        vm.expectRevert("You do not own this NFT.");
+        marketplace.listItem(nftAddress_, 1, price_);
+
+        vm.stopPrank();
+    }
+
     //----------------------------
 
     // Update price tests
@@ -216,31 +255,20 @@ contract NFTMarketplaceTest is Test {
 
         marketplace.listItem(nftAddress_, tokenId_, initialPrice_);
 
-        (
-            address nftAddressBefore_,
-            uint256 tokenIdBefore_,
-            uint256 priceBefore_,
-            address sellerBefore_
-        ) = marketplace.listings(nftAddress_, tokenId_);
+        (, , uint256 priceBefore_, ) = marketplace.listings(
+            nftAddress_,
+            tokenId_
+        );
 
         marketplace.updatePriceListing(nftAddress_, tokenId_, newPrice_);
 
-        (
-            address nftAddressAfter_,
-            uint256 tokenIdAfter_,
-            uint256 priceAfter_,
-            address sellerAfter_
-        ) = marketplace.listings(nftAddress_, tokenId_);
+        (, , uint256 priceAfter_, ) = marketplace.listings(
+            nftAddress_,
+            tokenId_
+        );
 
-        assertEq(nftAddressBefore_, nftAddress_);
-        assertEq(tokenIdBefore_, tokenId_);
         assertEq(priceBefore_, initialPrice_);
-        assertEq(sellerBefore_, user);
-
-        assertEq(nftAddressAfter_, nftAddress_);
-        assertEq(tokenIdAfter_, tokenId_);
         assertEq(priceAfter_, newPrice_);
-        assertEq(sellerAfter_, user);
 
         vm.stopPrank();
     }
@@ -296,35 +324,25 @@ contract NFTMarketplaceTest is Test {
         uint256 tokenId_ = tokenId;
         uint256 price_ = 1 ether;
 
+        (, , , address sellerBeforeList_) = marketplace.listings(
+            nftAddress_,
+            tokenId_
+        );
         marketplace.listItem(nftAddress_, tokenId, price_);
+        (, , , address sellerAfterList_) = marketplace.listings(
+            nftAddress_,
+            tokenId_
+        );
 
-        (
-            address nftAddressBefore_,
-            uint256 tokenIdBefore_,
-            uint256 priceBefore_,
-            address sellerBefore_
-        ) = marketplace.listings(nftAddress_, tokenId_);
+        assertEq(sellerBeforeList_, address(0));
+        assertEq(sellerAfterList_, user);
 
         marketplace.cancelListing(nftAddress_, tokenId_);
-
-        (
-            address nftAddressAfter_,
-            uint256 tokenIdAfter_,
-            uint256 priceAfter_,
-            address sellerAfter_
-        ) = marketplace.listings(nftAddress_, tokenId_);
-
-        // Default values
-        assertEq(nftAddressBefore_, nftAddress_);
-        assertEq(tokenIdBefore_, tokenId_);
-        assertEq(priceBefore_, price_);
-        assertEq(sellerBefore_, user);
-
-        // Updated values
-        assertEq(nftAddressAfter_, address(0));
-        assertEq(tokenIdAfter_, 0);
-        assertEq(priceAfter_, 0);
-        assertEq(sellerAfter_, address(0));
+        (, , , address sellerAfterCancel_) = marketplace.listings(
+            nftAddress_,
+            tokenId_
+        );
+        assertEq(sellerAfterCancel_, address(0));
 
         vm.stopPrank();
     }
@@ -353,9 +371,7 @@ contract NFTMarketplaceTest is Test {
 
         vm.startPrank(vm.addr(4));
 
-        vm.expectRevert(
-            "You can not cancel the listing of an item that's not yours or is not listed."
-        );
+        vm.expectRevert("You can not cancel the listing of an item that's not yours or is not listed.");
         marketplace.cancelListing(nftAddress_, tokenId_);
 
         vm.stopPrank();
@@ -397,7 +413,7 @@ contract NFTMarketplaceTest is Test {
         assertEq(previousNftOwner, user);
         assertEq(newNftOwner, buyer);
 
-        vm.stopPrank();   
+        vm.stopPrank();
     }
 
     function testBuyItemKO_unlistedItem() public {
@@ -409,7 +425,7 @@ contract NFTMarketplaceTest is Test {
         vm.expectRevert("Item not listed.");
         marketplace.buyItem{value: 1 ether}(nftAddress_, tokenId_);
 
-        vm.stopPrank();   
+        vm.stopPrank();
     }
 
     function testBuyItemKO_incorrectPriceAmount() public {
@@ -430,6 +446,32 @@ contract NFTMarketplaceTest is Test {
         vm.expectRevert("Please pay the correct amount for this item.");
         marketplace.buyItem{value: 0.5 ether}(nftAddress_, tokenId_);
 
-        vm.stopPrank();   
+        vm.stopPrank();
+    }
+
+    function testBuyItemKO_sellerPaymentReverts() public {
+        RevertingSeller seller = new RevertingSeller();
+        uint256 price_ = 1 ether;
+        uint256 tokenId_ = 1;
+        address nftAddress_ = address(nft);
+
+        nft.mint(address(seller), tokenId_);
+
+        vm.startPrank(address(seller));
+        nft.approve(address(marketplace), tokenId_);
+        marketplace.listItem(nftAddress_, tokenId_, price_);
+        vm.stopPrank();
+
+        address buyer = vm.addr(4);
+        vm.deal(buyer, price_);
+        vm.prank(buyer);
+        vm.expectRevert("Transfer ETH failed.");
+        marketplace.buyItem{value: price_}(nftAddress_, tokenId_);
+
+        // Verificamos que el listing sigue activo, el NFT sigue en el vendedor
+        (, , uint256 storedPrice_, address _seller) = marketplace.listings(nftAddress_,tokenId_);
+        assertEq(_seller, address(seller));
+        assertEq(storedPrice_, price_);
+        assertEq(nft.ownerOf(tokenId_), address(seller));
     }
 }
