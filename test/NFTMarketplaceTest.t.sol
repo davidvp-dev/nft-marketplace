@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity 0.8.34;
-import "forge-std/Test.sol";
+import { Test } from "forge-std/Test.sol";
 import { ERC721 } from "../lib/openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
 import { NFTMarketplace } from "../src/NFTMarketplace.sol";
 
@@ -254,7 +254,7 @@ contract NFTMarketplaceTest is Test {
         address nftAddress_ = address(nft);
         uint256 price_ = 1 ether;
         address user2 = vm.addr(8);
-        uint tokenId_ = 1;
+        uint256 tokenId_ = 1;
 
         nft.mint(user2, tokenId_);
         vm.expectRevert("You do not own this NFT.");
