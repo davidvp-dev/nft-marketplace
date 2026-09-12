@@ -2,25 +2,36 @@
 
 pragma solidity 0.8.34;
 import "forge-std/Test.sol";
-import {
-    ERC721
-} from "../lib/openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
-import {NFTMarketplace} from "../src/NFTMarketplace.sol";
+import { ERC721 } from "../lib/openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
+import { NFTMarketplace } from "../src/NFTMarketplace.sol";
 
+/// @title Mock NFT
+/// @notice Minimal ERC-721 token used by the marketplace tests.
 contract MockNFT is ERC721 {
+    /// @notice Creates the test NFT collection.
     constructor() ERC721("MockNFT", "MNFT") {}
 
+    /**
+     * @notice Mints a token to an address for test setup.
+     * @param to_ The address receiving the token.
+     * @param tokenId_ The token ID to mint.
+     */
     function mint(address to_, uint256 tokenId_) external {
         _mint(to_, tokenId_);
     }
 }
 
+/// @title Reverting Seller
+/// @notice Test account that rejects native currency payments.
 contract RevertingSeller {
+    /// @notice Reverts whenever the contract receives native currency.
     receive() external payable {
         revert("Seller rejected payment");
     }
 }
 
+/// @title NFT Marketplace Tests
+/// @notice Verifies marketplace setup, administration, listings, purchases, and failure cases.
 contract NFTMarketplaceTest is Test {
     NFTMarketplace marketplace;
     MockNFT nft;
@@ -28,6 +39,7 @@ contract NFTMarketplaceTest is Test {
     address user = vm.addr(2);
     uint256 tokenId = 0;
 
+    /// @notice Deploys the marketplace and test NFT, then mints the initial token.
     function setUp() public {
         vm.startPrank(deployer);
         marketplace = new NFTMarketplace();
@@ -39,25 +51,25 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
-    // Verify contracts deployed and NFT minted to user
+    /// @notice Verifies that the marketplace is deployed.
     function testMarketplaceDeployed() public view {
         address marketplaceAddress = address(marketplace);
         assertNotEq(marketplaceAddress, address(0));
     }
 
+    /// @notice Verifies that the mock NFT collection is deployed.
     function testNFTDeployed() public view {
         address nftAddress = address(nft);
         assertNotEq(nftAddress, address(0));
     }
 
+    /// @notice Verifies that the initial token belongs to the test user.
     function testMintNFT() public view {
         address owner = nft.ownerOf(tokenId);
         assertEq(owner, user);
     }
 
-    //----------------------------
-
-    // Admin tests
+    /// @notice Verifies that the owner can update the marketplace fee.
     function testupdateMarketplaceFeeOK() public {
         vm.startPrank(deployer);
         uint256 newFee_ = 250;
@@ -72,6 +84,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that setting the marketplace fee to zero reverts.
     function testupdateMarketplaceFeeKO_feeSetToZero() public {
         vm.startPrank(deployer);
         uint256 newFee_ = 0;
@@ -82,6 +95,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that a non-owner cannot update the marketplace fee.
     function testupdateMarketplaceFeeKO_notAdmin() public {
         vm.startPrank(user);
         uint256 newFee_ = 0;
@@ -92,6 +106,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that the owner can withdraw accumulated sale fees.
     function testWithdrawFeesOK() public {
         // 1. user A lists an item for sale (important to approve the NFT)
         vm.startPrank(user);
@@ -125,6 +140,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that withdrawing with no accumulated fees reverts.
     function testWithdrawFeesKO_noFeesAvailable() public {
         vm.startPrank(deployer);
 
@@ -134,6 +150,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that only the owner can withdraw fees.
     function testWithdrawFeesKO_onlyAdmin() public {
         vm.startPrank(user);
 
@@ -143,6 +160,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that fee withdrawal reverts when the recipient rejects payment.
     function testWithdrawFeesKO_ethNotAvailable() public {
         // 1. user A lists an item for sale (important to approve the NFT)
         vm.startPrank(user);
@@ -174,8 +192,7 @@ contract NFTMarketplaceTest is Test {
 
     }
 
-    //----------------------------
-    // Listing test
+    /// @notice Verifies that a user can create a listing for an owned NFT.
     function testListItemOK() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -201,6 +218,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that listing an NFT at zero price reverts.
     function testListItemKO_priceIsZero() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -213,6 +231,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that an address that does not own an NFT cannot list it.
     function testListItemKO_invalidOwner() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -229,6 +248,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that a user cannot list an NFT owned by another user.
     function testListItemKO_invalidNFTOwned() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -243,9 +263,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
-    //----------------------------
-
-    // Update price tests
+    /// @notice Verifies that the seller can update an existing listing price.
     function testUpdatePriceListingOK() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -273,6 +291,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that updating a nonexistent listing reverts.
     function testUpdatePriceListingKO_unlistedItem() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -284,6 +303,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that an address other than the seller cannot update a listing.
     function testUpdatePriceListingKO_notSeller() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -302,6 +322,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that updating a listing to zero price reverts.
     function testUpdatePriceListingKO_priceIsZero() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -315,9 +336,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
-    //----------------------------
-
-    // Cancel listing tests
+    /// @notice Verifies that the seller can cancel an existing listing.
     function testCancelListingOK() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -347,6 +366,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that cancelling a nonexistent listing reverts.
     function testCancelListingKO_itemNoExists() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -360,6 +380,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that an address other than the seller cannot cancel a listing.
     function testCancelListingKO_itemNotOwned() public {
         vm.startPrank(user);
         address nftAddress_ = address(nft);
@@ -377,9 +398,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
-    //----------------------------
-
-    // Buy item tests
+    /// @notice Verifies that a buyer receives the NFT and the seller receives the sale proceeds.
     function testBuyItemOK() public {
         // 1. user A lists an item for sale (important to approve the NFT)
         vm.startPrank(user);
@@ -416,6 +435,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that purchasing a nonexistent listing reverts.
     function testBuyItemKO_unlistedItem() public {
         vm.startPrank(user);
         vm.deal(user, 1 ether);
@@ -428,6 +448,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that purchasing with an incorrect amount reverts.
     function testBuyItemKO_incorrectPriceAmount() public {
         // 1. user A lists an item for sale (important to approve the NFT)
         vm.startPrank(user);
@@ -449,6 +470,7 @@ contract NFTMarketplaceTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Verifies that a seller payment failure reverts the purchase and preserves the listing.
     function testBuyItemKO_sellerPaymentReverts() public {
         RevertingSeller seller = new RevertingSeller();
         uint256 price_ = 1 ether;
@@ -468,7 +490,7 @@ contract NFTMarketplaceTest is Test {
         vm.expectRevert("Transfer ETH failed.");
         marketplace.buyItem{value: price_}(nftAddress_, tokenId_);
 
-        // Verificamos que el listing sigue activo, el NFT sigue en el vendedor
+        // verify listing is still active
         (, , uint256 storedPrice_, address _seller) = marketplace.listings(nftAddress_,tokenId_);
         assertEq(_seller, address(seller));
         assertEq(storedPrice_, price_);
